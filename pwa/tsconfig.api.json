@@ -1,0 +1,26 @@
+{
+  // Typechecks the Vercel serverless functions and the pipeline they share with
+  // the frontend, under the SAME module resolution Node uses at runtime.
+  //
+  // This exists because of a real outage: pwa/package.json is `"type": "module"`,
+  // so Vercel emits api/*.js as native ESM, where Node requires explicit file
+  // extensions on relative imports. The app tsconfig uses `moduleResolution:
+  // "bundler"`, which allows extensionless imports and excludes `api` entirely —
+  // so `from "../src/pipeline/pipeline"` compiled clean and then crashed every
+  // /api/cleanup request with ERR_MODULE_NOT_FOUND.
+  //
+  // NodeNext enforces the extensions, turning that failure into a build error.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["api", "src/pipeline"]
+}

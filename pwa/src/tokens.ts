@@ -1,39 +1,43 @@
 // WhimprFlow PWA design tokens.
 //
-// Committed dark theme, justified by scene: someone pulling out their phone
-// mid-thought — in a meeting, on a walk, in bed at night — to capture and clean a
-// spoken idea in seconds. Neutrals are tinted toward the slate/aqua brand hue in
-// OKLCH (no pure black/white); aqua is a *structural* signal reserved for the live
-// capture state, and a warm amber carries streak/attention so the app is never
-// mono-teal.
+// Every token's *value* is a CSS custom property reference, not a literal. The
+// actual colors, fonts and radii are written onto :root by lib/theme.ts from the
+// definitions in themes.ts. That indirection is what makes the theme picker
+// possible without touching the ~170 style call sites across the app: a
+// component asking for `c.bg` gets `var(--wf-bg)`, which resolves to whatever
+// world the user is currently in.
+//
+// Add a token here only alongside a value for it in EVERY theme (themes.ts has a
+// exhaustive type that will fail the build otherwise) — a missing custom
+// property resolves to nothing, which silently renders transparent.
 
-// Semantic color roles (OKLCH: lightness chroma hue).
+// Semantic color roles. See themes.ts for each world's actual palette.
 export const c = {
-  bg: "oklch(15.5% 0.012 245)", // app ground
-  bgDeep: "oklch(12.5% 0.012 248)", // recessed wells (textarea, chart floor)
-  surface: "oklch(20% 0.014 244)", // raised panels
-  surfaceHi: "oklch(24.5% 0.016 244)", // pressed / active chips
-  line: "oklch(29% 0.016 244)", // hairline dividers & borders
-  lineHi: "oklch(38% 0.02 242)", // stronger borders
+  bg: "var(--wf-bg)", // app ground
+  bgDeep: "var(--wf-bg-deep)", // recessed wells (textarea, chart floor)
+  surface: "var(--wf-surface)", // raised panels
+  surfaceHi: "var(--wf-surface-hi)", // pressed / active chips
+  line: "var(--wf-line)", // hairline dividers & borders
+  lineHi: "var(--wf-line-hi)", // stronger borders
 
-  textHi: "oklch(97% 0.006 230)", // headlines
-  text: "oklch(91% 0.01 232)", // body
-  textDim: "oklch(74% 0.018 234)", // secondary
-  textMute: "oklch(60% 0.02 240)", // captions / labels
+  textHi: "var(--wf-text-hi)", // headlines
+  text: "var(--wf-text)", // body
+  textDim: "var(--wf-text-dim)", // secondary
+  textMute: "var(--wf-text-mute)", // captions / labels
 
-  accent: "oklch(80% 0.135 188)", // aqua — live/primary
-  accentHi: "oklch(87% 0.14 184)", // aqua highlight
-  accentDeep: "oklch(66% 0.12 192)", // aqua pressed
-  onAccent: "oklch(20% 0.03 244)", // ink on aqua
+  accent: "var(--wf-accent)", // live / primary
+  accentHi: "var(--wf-accent-hi)", // accent highlight
+  accentDeep: "var(--wf-accent-deep)", // accent pressed
+  onAccent: "var(--wf-on-accent)", // ink on accent
 
-  warm: "oklch(82% 0.125 72)", // amber — streak / attention
-  warmDeep: "oklch(72% 0.15 55)",
+  warm: "var(--wf-warm)", // streak / attention
+  warmDeep: "var(--wf-warm-deep)",
 
-  error: "oklch(68% 0.17 24)",
-  success: "oklch(80% 0.135 188)",
+  error: "var(--wf-error)",
+  success: "var(--wf-success)",
 } as const;
 
-// Type scale — 1.28 ratio, display in Fraunces, body in Inter.
+// Type scale — 1.28 ratio. Sizes are fixed across themes; only the faces change.
 export const type = {
   display: 34,
   h1: 26,
@@ -45,20 +49,27 @@ export const type = {
 } as const;
 
 export const space = { xs: 6, sm: 10, md: 16, lg: 24, xl: 36 } as const;
-export const radius = { sm: 10, md: 14, lg: 20, pill: 999 } as const;
 
-export const font = {
-  ui: '"Inter", system-ui, -apple-system, sans-serif',
-  serif: '"Fraunces", "Newsreader", Georgia, serif',
-  mono: '"JetBrains Mono", ui-monospace, monospace',
+// Radii are themed: Bikini is all pills, Cascade is nearly square.
+export const radius = {
+  sm: "var(--wf-radius-sm)",
+  md: "var(--wf-radius-md)",
+  lg: "var(--wf-radius-lg)",
+  pill: 999,
 } as const;
 
-// Ease-out expo for state transitions (no bounce, no elastic).
-export const ease = "cubic-bezier(0.16, 1, 0.3, 1)" as const;
+export const font = {
+  ui: "var(--wf-font-ui)",
+  serif: "var(--wf-font-display)",
+  mono: "var(--wf-font-mono)",
+} as const;
+
+// State-transition easing. Themed: Cascade is instant, Bikini overshoots.
+export const ease = "var(--wf-ease)" as const;
 
 // ── Backward-compatible aliases (legacy `palette` shape) ─────────────────────
-// Older components referenced palette.slateXXX / accentXXX; map them onto the new
-// semantic roles so the whole app resolves during the refactor.
+// Older components referenced palette.slateXXX / accentXXX; map them onto the
+// semantic roles so the whole app resolves.
 export const palette = {
   slate950: c.bgDeep,
   slate900: c.bg,
@@ -76,7 +87,7 @@ export const palette = {
   accent400: c.accentHi,
   accent500: c.accent,
   accent600: c.accentDeep,
-  accentGlow: "oklch(80% 0.135 188 / 0.28)",
+  accentGlow: "var(--wf-accent-glow)",
 
   pillText: c.text,
   pillTextMuted: c.textMute,
@@ -84,7 +95,7 @@ export const palette = {
 
   error: c.error,
   warn: c.warm,
-  info: "oklch(72% 0.12 245)",
+  info: "var(--wf-info)",
   success: c.success,
 } as const;
 

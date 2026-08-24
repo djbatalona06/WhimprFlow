@@ -3,8 +3,8 @@
 // `crates/whimpr-core/src/cleanup/gates.rs`. On any failure the caller falls
 // back to the raw transcript.
 
-import type { CleanupLevel } from "./types";
-import { bypassesLlm, maxNoveltyRatio } from "./levels";
+import type { CleanupLevel } from "./types.js";
+import { bypassesLlm, maxNoveltyRatio } from "./levels.js";
 
 export type GateReason =
   | { kind: "EditRatioTooHigh"; ratio: number; ceiling: number }

@@ -1,11 +1,14 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap");
+/* Only the theme-independent shell lives here. Colors, fonts, radii and easing
+   are custom properties written onto :root by lib/theme.ts — see themes.ts.
+
+   The fallbacks below are the Signature palette, so the page still renders
+   correctly in the instant before applyTheme() runs (and if JS fails outright). */
 
 :root {
-  color-scheme: dark;
+  --wf-bg: oklch(15.5% 0.012 245);
+  --wf-text: oklch(91% 0.01 232);
+  --wf-font-ui: system-ui, -apple-system, sans-serif;
   -webkit-tap-highlight-color: transparent;
-  /* App ground — OKLCH slate, tinted toward the brand hue. */
-  --bg: oklch(15.5% 0.012 245);
-  --text: oklch(91% 0.01 232);
 }
 
 * {
@@ -20,28 +23,33 @@ body,
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: var(--wf-bg);
+  color: var(--wf-text);
+  font-family: var(--wf-font-ui);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overscroll-behavior-y: none;
+  /* Themes cross-fade rather than snapping when the picker is used. */
+  transition: background 260ms var(--wf-ease, ease), color 260ms var(--wf-ease, ease);
 }
 
-button {
-  font-family: inherit;
-}
-
+button,
 textarea,
 input {
   font-family: inherit;
 }
 
 ::selection {
-  background: oklch(80% 0.135 188 / 0.28);
+  background: var(--wf-accent-glow);
 }
 
 ::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
 }

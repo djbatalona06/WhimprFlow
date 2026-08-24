@@ -61,10 +61,22 @@ export const NoteIcon = ({ size = 18, color = "currentColor" }: P) => (
     <path d="M9 8h6M9 12h6" />
   </svg>
 );
-export const WebhookIcon = ({ size = 18, color = "currentColor" }: P) => (
+
+export const DownloadIcon = ({ size = 18, color = "currentColor" }: P) => (
   <svg {...base(size, color)}>
-    <path d="M6 8a4 4 0 1 1 6 3.5L9 17" />
-    <path d="M18 12a4 4 0 1 1-4 4H9" />
-    <circle cx="9" cy="18" r="1.5" />
+    <path d="M12 3v12" />
+    <path d="M8 11l4 4 4-4" />
+    <path d="M5 20h14" />
+  </svg>
+);
+export const CheckIcon = ({ size = 18, color = "currentColor" }: P) => (
+  <svg {...base(size, color)}>
+    <path d="M4 12.5l5 5L20 6.5" />
+  </svg>
+);
+export const TableIcon = ({ size = 18, color = "currentColor" }: P) => (
+  <svg {...base(size, color)}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M3 10h18M9 10v10" />
   </svg>
 );

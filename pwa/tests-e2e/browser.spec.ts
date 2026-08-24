@@ -53,6 +53,8 @@ test("service worker registers", async ({ page }) => {
 test("idle record screen renders", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("Tap to dictate")).toBeVisible();
+  // Tone/structure now lives under the record button, not in Settings.
+  await expect(page.getByRole("button", { name: "Email" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Start recording" })).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/01-record-idle.png`, fullPage: true });
 });
@@ -75,11 +77,12 @@ test("full record → clean → export flow", async ({ page }) => {
   await expect(textarea).toBeVisible({ timeout: 20_000 });
   await expect(textarea).toHaveValue("So I think we should meet at 3.");
 
-  // All four export destinations are present.
+  // The three single-note destinations. The webhook is gone; bulk export lives
+  // in Settings and History instead.
   await expect(page.getByRole("button", { name: "Copy" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Notes / Share" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Obsidian" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "n8n / Webhook" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "n8n / Webhook" })).toHaveCount(0);
   await page.screenshot({ path: `${SHOTS}/03-result.png`, fullPage: true });
 
   // Copy is wired and gives feedback. In headless Chromium the Clipboard API is
@@ -131,4 +134,108 @@ test("insights (populated) + settings render and persist", async ({ page }) => {
   await page.reload();
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByPlaceholder("My Vault")).toHaveValue("DJ Vault");
+});
+
+
+// ── Themes ──────────────────────────────────────────────────────────────────
+
+const THEMES = [
+  { id: "signature", name: "Signature", idle: "Tap to dictate" },
+  { id: "eden", name: "Garden of Eden", idle: "Speak it into being" },
+  { id: "cascade", name: "The Matrix", idle: "AWAITING INPUT" },
+  { id: "bikini", name: "Bikini Bottom", idle: "Ready when you are!" },
+  { id: "shinobi", name: "Shinobi", idle: "One breath, then speak" },
+];
+
+for (const theme of THEMES) {
+  test(`theme: ${theme.id} paints its own palette and voice`, async ({ page }) => {
+    await page.addInitScript((id) => localStorage.setItem("whimpr.theme", id), theme.id);
+    await page.goto("/");
+
+    // The theme's own copy, not the default's.
+    await expect(page.getByText(theme.idle)).toBeVisible();
+
+    // Its palette actually reached :root, and the record control is themed.
+    const root = page.locator("html");
+    await expect(root).toHaveAttribute("data-wf-theme", theme.id);
+    const accent = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--wf-accent").trim(),
+    );
+    expect(accent).not.toBe("");
+    await expect(page.getByRole("button", { name: "Start recording" })).toBeVisible();
+
+    // Body text must not be painted with an unresolved custom property, which is
+    // how a missing token silently renders as transparent.
+    const bodyColor = await page.evaluate(() => getComputedStyle(document.body).color);
+    expect(bodyColor).toMatch(/^(rgb|oklch|color)/);
+
+    await page.screenshot({ path: `${SHOTS}/theme-${theme.id}.png`, fullPage: true });
+  });
+}
+
+test("theme picker switches worlds and survives reload", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings" }).click();
+
+  await page.getByRole("button", { name: "Bikini Bottom" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-wf-theme", "bikini");
+
+  // Shinobi exposes a variant toggle; the others do not.
+  await expect(page.getByRole("button", { name: "Crimson" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Shinobi" }).click();
+  await page.getByRole("button", { name: "Lightning" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-wf-variant", "kakashi");
+
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-wf-theme", "shinobi");
+  await expect(page.locator("html")).toHaveAttribute("data-wf-variant", "kakashi");
+});
+
+// ── Cleanup levels + bulk export ────────────────────────────────────────────
+
+test("each cleanup level explains what it edits", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings" }).click();
+
+  await expect(page.getByText("0% drift")).toBeVisible();
+  await expect(page.getByText("85% drift")).toBeVisible();
+
+  // Expanding a level shows the before/after and the guarantees.
+  await page.getByRole("button", { name: /^High/ }).click();
+  await expect(page.getByText("You say")).toBeVisible();
+  await expect(page.getByText(/never as a question to answer/)).toBeVisible();
+  await expect(page.getByText(/Every fact, name, number, date/)).toBeVisible();
+});
+
+test("bulk export offers every destination and guards the Obsidian link", async ({ page }) => {
+  const now = Math.floor(Date.now() / 1000);
+  await page.addInitScript((n) => {
+    const rows = Array.from({ length: 5 }, (_, i) => ({
+      ts_unix: n - i * 3600,
+      words: 8,
+      duration_ms: 9000,
+      chars: 48,
+      text: `Seeded dictation number ${i} for the export review.`,
+      app: null,
+    }));
+    localStorage.setItem("whimpr.history", JSON.stringify(rows));
+    localStorage.setItem("whimpr.settings", JSON.stringify({ obsidian_vault: "DJ Vault" }));
+  }, now);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("button", { name: /Download \.md/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Copy all/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /To Obsidian/ })).toBeEnabled();
+
+  // The .md export must actually produce a file.
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: /Download \.md/ }).click();
+  expect((await download).suggestedFilename()).toMatch(/^whimprflow-.*\.md$/);
+
+  // History selection drives the same destinations.
+  await page.getByRole("button", { name: "History" }).click();
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  await page.getByRole("button", { name: /Select all/ }).click();
+  await expect(page.getByText(/5 dictations/)).toBeVisible();
 });
