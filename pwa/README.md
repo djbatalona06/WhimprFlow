@@ -59,6 +59,7 @@ pnpm build          # typecheck (app + api) + contrast check + production build
 pnpm test           # Vitest — cleanup-pipeline parity and bulk export
 pnpm typecheck:api  # NodeNext typecheck of api/ and the shared pipeline
 pnpm check:contrast # WCAG AA across all five theme palettes
+pnpm verify:esm     # compile api/ the way Vercel does and invoke the handler
 pnpm e2e            # Playwright browser review (mobile viewport)
 ```
 
@@ -75,6 +76,13 @@ This split exists because of a real outage: `api/cleanup.ts` imported
 `"../src/pipeline/pipeline"`, compiled clean under the app config (which excludes
 `api/` entirely), and then failed every request in production with
 `ERR_MODULE_NOT_FOUND`. Keep both configs in the build.
+
+`scripts/verify-esm-runtime.mjs` closes the same gap from the other side: it
+compiles `api/` to ESM under a `"type": "module"` package the way Vercel does and
+actually invokes the cleanup handler. Nothing else in the suite would catch this
+class of bug — the app typecheck skips `api/`, the unit tests import the
+TypeScript sources through Vite's resolver, and the e2e suite mocks the backend.
+Only Node's own ESM resolver running the compiled output sees it.
 
 ## Install on a phone
 
