@@ -19,8 +19,6 @@ export interface Settings {
   target_medium: TargetMedium;
   /** Obsidian vault name for the obsidian:// deep link. */
   obsidian_vault: string;
-  /** Optional n8n / automation webhook the result is POSTed to. */
-  webhook_url: string;
   /** Optional per-request key, used only if the backend has no server key set. */
   api_key: string;
   /** Optional OpenAI-compatible base URL override (blank = backend default). */
@@ -34,7 +32,6 @@ export const DEFAULT_SETTINGS: Settings = {
   speech_model: "whisper-large-v3",
   target_medium: "none",
   obsidian_vault: "",
-  webhook_url: "",
   api_key: "",
   api_base_url: "",
   sound_on_start: true,
@@ -80,8 +77,23 @@ function write(key: string, value: unknown): void {
 }
 
 // ── Settings ────────────────────────────────────────────────────────────────
+
+/** Keys dropped from Settings that may still sit in a returning user's storage. */
+const RETIRED_KEYS = ["webhook_url"];
+
 export function getSettings(): Settings {
-  return read<Settings>(K_SETTINGS, DEFAULT_SETTINGS);
+  const s = read<Settings>(K_SETTINGS, DEFAULT_SETTINGS);
+  // The n8n webhook was removed in favour of bulk export; strip any leftover so
+  // a stale URL never travels with the settings object.
+  let dirty = false;
+  for (const key of RETIRED_KEYS) {
+    if (key in (s as unknown as object)) {
+      delete (s as unknown as Record<string, unknown>)[key];
+      dirty = true;
+    }
+  }
+  if (dirty) write(K_SETTINGS, s);
+  return s;
 }
 export function setSettings(s: Settings): void {
   write(K_SETTINGS, s);

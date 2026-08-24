@@ -5,18 +5,12 @@ import { Button } from "../components/ui";
 import { Waveform } from "../components/Waveform";
 import { RecordButton } from "../components/RecordButton";
 import { useTheme } from "../lib/useTheme";
-import { CopyIcon, ShareIcon, NoteIcon, WebhookIcon } from "../components/icons";
+import { CopyIcon, ShareIcon, NoteIcon } from "../components/icons";
 import { startRecording, Recorder } from "../lib/recorder";
 import { transcribe, cleanup, TranscribeError, type RawReason } from "../lib/api";
-import { getSettings, addHistory, vocab } from "../lib/store";
+import { getSettings, setSettings, addHistory, vocab, type TargetMedium } from "../lib/store";
 import { countWords, type SessionRecord } from "../lib/stats";
-import {
-  copyToClipboard,
-  shareText,
-  sendToObsidian,
-  sendToWebhook,
-  type ExportResult,
-} from "../lib/exports";
+import { copyToClipboard, shareText, sendToObsidian, type ExportResult } from "../lib/exports";
 
 type Phase = "idle" | "recording" | "processing" | "result" | "error";
 
@@ -203,14 +197,14 @@ export function RecordScreen() {
             }}
           />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: space.sm, marginTop: space.md }}>
-            <ExportButton icon={<CopyIcon />} label="Copy" onClick={() => runExport(() => copyToClipboard(text))} />
+            <ExportButton
+              icon={<CopyIcon />}
+              label="Copy"
+              onClick={() => runExport(() => copyToClipboard(text))}
+              style={{ gridColumn: "1 / -1" }}
+            />
             <ExportButton icon={<ShareIcon />} label="Notes / Share" onClick={() => runExport(() => shareText(text))} />
             <ExportButton icon={<NoteIcon />} label="Obsidian" onClick={() => runExport(() => sendToObsidian(text, getSettings().obsidian_vault))} />
-            <ExportButton
-              icon={<WebhookIcon />}
-              label="n8n / Webhook"
-              onClick={() => runExport(() => sendToWebhook(text, getSettings().webhook_url, { words: countWords(text), durationMs: 0 }))}
-            />
           </div>
           <button
             onClick={reset}
@@ -248,8 +242,18 @@ export function RecordScreen() {
 }
 
 function IdleView({ onStart, theme }: { onStart: () => void; theme: Theme }) {
+  // Where the text is headed shapes tone and structure, so it belongs here — one
+  // tap below the button, decided in the same breath as hitting record — rather
+  // than buried in Settings where nobody revisits it per dictation.
+  const [medium, setMedium] = useState<TargetMedium>(() => getSettings().target_medium);
+
+  function choose(next: TargetMedium) {
+    setMedium(next);
+    setSettings({ ...getSettings(), target_medium: next });
+  }
+
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingBottom: 40 }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingBottom: 24 }}>
       <RecordButton onClick={onStart} form={theme.record} />
       <div style={{ marginTop: space.lg, fontSize: type.lg, color: c.text, fontWeight: 600, fontFamily: font.serif }}>
         {theme.copy.idleTitle}
@@ -257,7 +261,54 @@ function IdleView({ onStart, theme }: { onStart: () => void; theme: Theme }) {
       <p style={{ marginTop: space.xs, fontSize: type.sm, color: c.textMute, textAlign: "center", maxWidth: 300, lineHeight: 1.55 }}>
         {theme.copy.idleBody}
       </p>
+
+      <div style={{ marginTop: space.xl, width: "100%", maxWidth: 340 }}>
+        <div style={{ fontSize: type.micro, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: c.textMute, textAlign: "center", marginBottom: space.sm }}>
+          Shape it for
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: space.xs, justifyContent: "center" }}>
+          {MEDIA.map((m) => (
+            <MediumChip key={m.value} label={m.label} active={m.value === medium} onClick={() => choose(m.value)} />
+          ))}
+        </div>
+        <p style={{ marginTop: space.sm, fontSize: type.micro + 1, color: c.textMute, textAlign: "center", lineHeight: 1.45 }}>
+          {MEDIA.find((m) => m.value === medium)?.hint}
+        </p>
+      </div>
     </div>
+  );
+}
+
+/** Target media, with what each actually does to the output. */
+const MEDIA: { value: TargetMedium; label: string; hint: string }[] = [
+  { value: "none", label: "Anything", hint: "No shaping — just clean text in your own structure." },
+  { value: "email", label: "Email", hint: "Full sentences and paragraph breaks between ideas. A greeting or sign-off only if you actually said one." },
+  { value: "sms", label: "Text", hint: "Short and casual. Light punctuation, no email structure." },
+  { value: "chat", label: "Chat", hint: "Concise and casual, short paragraphs. Built for Slack or Discord." },
+  { value: "docs", label: "Notes", hint: "Clean prose or lists with full punctuation. Spoken enumerations become real lists." },
+];
+
+function MediumChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        appearance: "none",
+        cursor: "pointer",
+        padding: "8px 14px",
+        borderRadius: radius.pill,
+        fontSize: type.sm,
+        fontWeight: 600,
+        fontFamily: font.ui,
+        background: active ? c.accent : "transparent",
+        color: active ? c.onAccent : c.textDim,
+        border: `1px solid ${active ? c.accent : c.line}`,
+        transition: `background 160ms ${ease}, color 160ms ${ease}`,
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -325,7 +376,17 @@ function ProcessingView({ progress }: { progress: string }) {
   );
 }
 
-function ExportButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+function ExportButton({
+  icon,
+  label,
+  onClick,
+  style,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  style?: React.CSSProperties;
+}) {
   return (
     <button
       onClick={onClick}
@@ -343,6 +404,7 @@ function ExportButton({ icon, label, onClick }: { icon: React.ReactNode; label: 
         fontWeight: 600,
         cursor: "pointer",
         transition: `background 160ms ${ease}`,
+        ...style,
       }}
     >
       <span style={{ color: c.accent, display: "inline-flex" }}>{icon}</span>

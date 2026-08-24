@@ -1,8 +1,12 @@
 import { useState } from "react";
-import { c, type, space, ease } from "../tokens";
-import { PageTitle, Segmented, TextInput, Field, Section } from "../components/ui";
+import { c, type, space, radius, ease, font } from "../tokens";
+import { PageTitle, TextInput, Field, Section } from "../components/ui";
 import { ThemePicker } from "../components/ThemePicker";
-import { getSettings, setSettings, DEFAULT_SETTINGS, type Settings, type TargetMedium } from "../lib/store";
+import { CleanupLevels } from "../components/CleanupLevels";
+import { BulkExport } from "../components/BulkExport";
+import { getSettings, setSettings, DEFAULT_SETTINGS, type Settings } from "../lib/store";
+import { sendToObsidian } from "../lib/exports";
+import { health, type Health } from "../lib/api";
 import type { CleanupLevel } from "../pipeline/types";
 
 export function SettingsScreen() {
@@ -17,54 +21,35 @@ export function SettingsScreen() {
 
   return (
     <div>
-      <PageTitle sub="Look, cleanup, destinations, and connection">Settings</PageTitle>
+      <PageTitle sub="Look, cleanup, export, and connection">Settings</PageTitle>
 
       <Section title="Theme">
         <ThemePicker />
       </Section>
 
-      <Section title="Cleanup">
-        <Field label="How much to edit" hint="Light is conservative: fillers and punctuation only. Raw skips the AI entirely.">
-          <Segmented<CleanupLevel>
-            value={s.cleanup_level}
-            onChange={(v) => update("cleanup_level", v)}
-            options={[
-              { value: "none", label: "Raw" },
-              { value: "light", label: "Light" },
-              { value: "medium", label: "Medium" },
-              { value: "high", label: "High" },
-            ]}
-          />
-        </Field>
-        <Field label="Shape it for" hint="Adjusts tone and structure for where the text is headed.">
-          <Segmented<TargetMedium>
-            value={s.target_medium}
-            onChange={(v) => update("target_medium", v)}
-            options={[
-              { value: "none", label: "Any" },
-              { value: "email", label: "Email" },
-              { value: "sms", label: "Text" },
-              { value: "chat", label: "Chat" },
-              { value: "docs", label: "Notes" },
-            ]}
-          />
-        </Field>
+      <Section title="How much to edit">
+        <CleanupLevels
+          value={s.cleanup_level}
+          onChange={(v: CleanupLevel) => update("cleanup_level", v)}
+        />
+      </Section>
+
+      <Section title="Export">
+        <BulkExport vault={s.obsidian_vault} />
       </Section>
 
       <Section title="Destinations">
-        <Field label="Obsidian vault name" hint="Used by the Obsidian button (obsidian:// deep link). Needs the app installed.">
-          <TextInput value={s.obsidian_vault} onChange={(e) => update("obsidian_vault", e.target.value)} placeholder="My Vault" />
-        </Field>
-        <Field label="n8n / automation webhook" hint="The Webhook button POSTs the transcript JSON here.">
-          <TextInput
-            value={s.webhook_url}
-            onChange={(e) => update("webhook_url", e.target.value)}
-            placeholder="https://…/webhook/…"
-            inputMode="url"
-            autoCapitalize="none"
-          />
-        </Field>
-        <ToggleRow label="Sound on start" value={s.sound_on_start} onChange={(v) => update("sound_on_start", v)} />
+        <ObsidianField value={s.obsidian_vault} onChange={(v) => update("obsidian_vault", v)} />
+        <ToggleRow
+          label="Sound on start"
+          hint="A short tone when recording begins, so you know it's live without looking."
+          value={s.sound_on_start}
+          onChange={(v) => update("sound_on_start", v)}
+        />
+      </Section>
+
+      <Section title="Connection">
+        <ConnectionCheck />
       </Section>
 
       <button
@@ -107,39 +92,195 @@ export function SettingsScreen() {
   );
 }
 
-function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+/**
+ * The vault name is the one setting that fails silently — a typo just opens
+ * Obsidian to nothing. So show the exact link being built, and offer to fire it.
+ */
+function ObsidianField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [tested, setTested] = useState("");
+  const trimmed = value.trim();
+
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: `${space.xs}px 0 ${space.md}px` }}>
-      <span style={{ fontSize: type.body, fontWeight: 600, color: c.text }}>{label}</span>
+    <Field
+      label="Obsidian vault name"
+      hint="The exact vault name as it appears in Obsidian's sidebar — not a file path. Needs Obsidian installed on this device."
+    >
+      <TextInput
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="My Vault"
+        autoCapitalize="none"
+      />
+      {trimmed ? (
+        <div style={{ marginTop: space.sm }}>
+          <code
+            style={{
+              display: "block",
+              fontSize: type.micro,
+              fontFamily: font.mono,
+              color: c.textMute,
+              background: c.bgDeep,
+              borderRadius: radius.sm,
+              padding: "7px 9px",
+              overflowWrap: "anywhere",
+            }}
+          >
+            obsidian://new?vault={encodeURIComponent(trimmed)}&…
+          </code>
+          <button
+            onClick={() => {
+              const r = sendToObsidian(
+                "This is a WhimprFlow test note. If you can read this, your vault link works.",
+                trimmed,
+              );
+              setTested(r.message);
+            }}
+            style={{
+              marginTop: space.sm,
+              background: "transparent",
+              border: `1px solid ${c.line}`,
+              borderRadius: radius.sm,
+              color: c.accent,
+              fontSize: type.sm,
+              fontWeight: 600,
+              padding: "8px 14px",
+              cursor: "pointer",
+            }}
+          >
+            Test link
+          </button>
+          {tested && (
+            <span style={{ fontSize: type.micro + 1, color: c.textMute, marginLeft: space.sm }}>
+              {tested}
+            </span>
+          )}
+        </div>
+      ) : null}
+    </Field>
+  );
+}
+
+/** One tap to find out whether the backend is actually configured. */
+function ConnectionCheck() {
+  const [state, setState] = useState<"idle" | "checking" | "done">("idle");
+  const [result, setResult] = useState<Health | null>(null);
+
+  async function check() {
+    setState("checking");
+    setResult(await health());
+    setState("done");
+  }
+
+  return (
+    <div>
       <button
-        role="switch"
-        aria-checked={value}
-        aria-label={label}
-        onClick={() => onChange(!value)}
+        onClick={check}
+        disabled={state === "checking"}
         style={{
-          width: 48,
-          height: 28,
-          borderRadius: 999,
-          border: "none",
-          cursor: "pointer",
-          background: value ? c.accent : c.line,
-          position: "relative",
-          transition: `background 180ms ${ease}`,
+          appearance: "none",
+          background: "transparent",
+          border: `1px solid ${c.line}`,
+          borderRadius: radius.md,
+          color: c.text,
+          fontSize: type.body,
+          fontWeight: 600,
+          padding: "12px 18px",
+          cursor: state === "checking" ? "default" : "pointer",
+          width: "100%",
         }}
       >
-        <span
-          style={{
-            position: "absolute",
-            top: 3,
-            left: value ? 23 : 3,
-            width: 22,
-            height: 22,
-            borderRadius: "50%",
-            background: c.textHi,
-            transition: `left 180ms ${ease}`,
-          }}
-        />
+        {state === "checking" ? "Checking…" : "Check connection"}
       </button>
+
+      {state === "done" && (
+        <div style={{ marginTop: space.md, fontSize: type.sm, lineHeight: 1.7 }}>
+          {result === null ? (
+            <span style={{ color: c.error }}>
+              The backend didn't answer. If you're running the app locally, the /api routes need
+              `vercel dev` or a deploy.
+            </span>
+          ) : (
+            <>
+              <StatusRow ok={result.speechKey} label="Speech key configured" />
+              <StatusRow ok={result.llmKey} label="Cleanup key configured" />
+              <StatusRow ok={result.pipeline} label="Cleanup pipeline loaded" />
+              <div style={{ color: c.textMute, fontSize: type.micro + 1, marginTop: space.xs }}>
+                Cleanup model: {result.cleanupModel}
+              </div>
+              {!result.ok && (
+                <div style={{ color: c.warm, marginTop: space.xs }}>
+                  Dictation still works for anything marked good above — a missing cleanup key just
+                  means you get the raw transcript.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusRow({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: space.sm, color: ok ? c.text : c.error }}>
+      <span aria-hidden="true" style={{ fontWeight: 700 }}>{ok ? "✓" : "✕"}</span>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function ToggleRow({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div style={{ padding: `${space.xs}px 0 ${space.md}px` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.md }}>
+        <span style={{ fontSize: type.body, fontWeight: 600, color: c.text }}>{label}</span>
+        <button
+          role="switch"
+          aria-checked={value}
+          aria-label={label}
+          onClick={() => onChange(!value)}
+          style={{
+            flexShrink: 0,
+            width: 48,
+            height: 28,
+            borderRadius: 999,
+            border: "none",
+            cursor: "pointer",
+            background: value ? c.accent : c.line,
+            position: "relative",
+            transition: `background 180ms ${ease}`,
+          }}
+        >
+          <span
+            style={{
+              position: "absolute",
+              top: 3,
+              left: value ? 23 : 3,
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              background: value ? c.onAccent : c.textHi,
+              transition: `left 180ms ${ease}`,
+            }}
+          />
+        </button>
+      </div>
+      {hint && (
+        <div style={{ fontSize: type.micro + 1, color: c.textMute, marginTop: space.xs, lineHeight: 1.45, maxWidth: 300 }}>
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
