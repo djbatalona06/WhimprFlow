@@ -1,0 +1,47 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap");
+
+:root {
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+  /* App ground — OKLCH slate, tinted toward the brand hue. */
+  --bg: oklch(15.5% 0.012 245);
+  --text: oklch(91% 0.01 232);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+textarea,
+input {
+  font-family: inherit;
+}
+
+::selection {
+  background: oklch(80% 0.135 188 / 0.28);
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}

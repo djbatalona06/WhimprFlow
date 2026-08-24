@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dev-dist/
+.vercel/
+test-results/
+playwright-report/
+screenshots/
+*.local
+.DS_Store
