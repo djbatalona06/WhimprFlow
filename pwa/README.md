@@ -1,0 +1,58 @@
+# WhimprFlow — PWA (phone companion)
+
+An installable Progressive Web App that brings WhimprFlow's dictation cleanup to
+your phone: **record → transcribe → clean → send**. Because a browser can't type
+into other apps the way the desktop app does (no global hotkey / paste-anywhere on
+mobile), this is a capture-and-send tool — the cleaned text goes to your clipboard,
+the iOS share sheet (Apple Notes, Messages, Mail…), **Obsidian** (`obsidian://`
+deep link), or an **n8n / automation webhook**.
+
+The cleanup pipeline (prompts, levels, deterministic gates, layout normalization)
+is ported 1:1 from the desktop `whimpr-core` crate, so the phone produces the same
+edits as the desktop app. Only transcription differs: Whisper is native-only, so the
+PWA calls an OpenAI-compatible speech API through its own backend.
+
+## Architecture
+
+- **Frontend** (`src/`) — Vite + React + TypeScript. Record/History/Insights/
+  Words/Settings screens. Settings, history, and the custom dictionary persist in
+  `localStorage` (per device).
+- **Ported pipeline** (`src/pipeline/`) — `prompts.ts`, `levels.ts`, `gates.ts`,
+  `pipeline.ts`, mirrored from `crates/whimpr-core/src/cleanup/*`. Unit-tested for
+  parity (`src/tests/`, Vitest).
+- **Backend** (`api/`) — Vercel serverless functions:
+  - `POST /api/transcribe` — proxies raw audio to an OpenAI-compatible
+    `/audio/transcriptions` endpoint (Groq `whisper-large-v3` by default).
+  - `POST /api/cleanup` — runs the ported pipeline against a chat endpoint, applies
+    the gates + post-process, and falls back to the raw transcript on any failure.
+  The API key lives server-side (env). If no server key is set, a key entered in the
+  app's Settings is forwarded per request (proxied, never persisted).
+
+## Configuration
+
+Set one env var on the host (Vercel project settings) — a single Groq key covers both
+whisper and the cleanup LLM:
+
+```
+WHIMPR_API_KEY=gsk_...        # or SPEECH_API_KEY + LLM_API_KEY separately
+# optional overrides:
+WHIMPR_BASE_URL=https://api.groq.com/openai/v1
+LLM_MODEL=llama-3.3-70b-versatile
+```
+
+No server key? Open the app → Settings → Advanced and paste a key there instead.
+
+## Develop
+
+```bash
+pnpm install
+pnpm dev            # Vite dev server (the /api routes need `vercel dev` or deploy)
+pnpm build          # typecheck + production build (emits manifest + service worker)
+pnpm test           # Vitest — cleanup-pipeline parity
+pnpm e2e            # Playwright browser review (mobile viewport)
+```
+
+## Install on a phone
+
+Open the deployed HTTPS URL in the phone browser and choose **Add to Home Screen**.
+It then launches standalone like a native app and works offline for the shell.
