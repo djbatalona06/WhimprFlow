@@ -9,14 +9,44 @@ import { c } from "../tokens";
 import type { RecordForm } from "../themes";
 
 interface Props {
-  onClick: () => void;
+  onClick?: () => void;
   form: RecordForm;
   size?: number;
   label?: string;
+  /**
+   * Render the artwork alone, with no button wrapper and nothing in the
+   * accessibility tree. Needed wherever this sits inside another control — the
+   * theme picker tiles — since nesting a button in a button is invalid HTML and
+   * gives screen readers two competing targets for one action.
+   */
+  decorative?: boolean;
 }
 
-export function RecordButton({ onClick, form, size = 128, label = "Start recording" }: Props) {
+export function RecordButton({
+  onClick,
+  form,
+  size = 128,
+  label = "Start recording",
+  decorative = false,
+}: Props) {
   const Art = ART[form] ?? Rings;
+  const art = (
+    <>
+      <svg width={size} height={size} viewBox="0 0 128 128" aria-hidden="true">
+        <Art />
+      </svg>
+      <style>{RECORD_CSS}</style>
+    </>
+  );
+
+  if (decorative) {
+    return (
+      <span aria-hidden="true" style={{ display: "inline-flex", lineHeight: 0 }}>
+        {art}
+      </span>
+    );
+  }
+
   return (
     <button
       onClick={onClick}
@@ -24,10 +54,7 @@ export function RecordButton({ onClick, form, size = 128, label = "Start recordi
       className="wf-record"
       style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", lineHeight: 0 }}
     >
-      <svg width={size} height={size} viewBox="0 0 128 128" aria-hidden="true">
-        <Art />
-      </svg>
-      <style>{RECORD_CSS}</style>
+      {art}
     </button>
   );
 }

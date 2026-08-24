@@ -110,12 +110,7 @@ function ThemeTile({
             } as React.CSSProperties
           }
         >
-          <RecordButton
-            onClick={onSelect}
-            form={theme.record}
-            size={54}
-            label={`Preview ${theme.name}`}
-          />
+          <RecordButton form={theme.record} size={54} decorative />
         </div>
       </div>
 
