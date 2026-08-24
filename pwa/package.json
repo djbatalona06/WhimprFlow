@@ -6,12 +6,13 @@
   "description": "WhimprFlow phone companion — record, transcribe, clean, and send to Notes, Obsidian, or a bulk export. Installable PWA.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && tsc -p tsconfig.api.json && vite build",
+    "build": "tsc --noEmit && tsc -p tsconfig.api.json && node scripts/check-contrast.mjs && vite build",
     "preview": "vite preview --port 4173",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "typecheck:api": "tsc -p tsconfig.api.json"
+    "typecheck:api": "tsc -p tsconfig.api.json",
+    "check:contrast": "node scripts/check-contrast.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

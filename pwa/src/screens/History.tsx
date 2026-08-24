@@ -5,6 +5,7 @@ import { CopyIcon, ShareIcon } from "../components/icons";
 import { getHistory, clearHistory } from "../lib/store";
 import { history as toHistory, type HistoryItem } from "../lib/stats";
 import { copyToClipboard, shareText } from "../lib/exports";
+import { useTheme } from "../lib/useTheme";
 
 function dayLabel(tsUnix: number): string {
   const d = new Date(tsUnix * 1000);
@@ -16,6 +17,7 @@ function dayLabel(tsUnix: number): string {
 }
 
 export function HistoryScreen() {
+  const { theme } = useTheme();
   const [items, setItems] = useState<HistoryItem[]>(() => toHistory(getHistory(), 500));
   const [q, setQ] = useState("");
 
@@ -39,10 +41,10 @@ export function HistoryScreen() {
         <PageTitle>History</PageTitle>
         <div style={{ marginTop: 80, textAlign: "center", padding: `0 ${space.lg}px` }}>
           <div style={{ fontFamily: font.serif, fontSize: type.h2, color: c.textDim, marginBottom: space.sm }}>
-            No dictations yet
+            {theme.copy.emptyTitle}
           </div>
           <p style={{ fontSize: type.body, color: c.textMute, lineHeight: 1.6, maxWidth: 280, margin: "0 auto" }}>
-            Everything you dictate is saved here on this device, ready to copy or send again.
+            {theme.copy.emptyBody}
           </p>
         </div>
       </div>

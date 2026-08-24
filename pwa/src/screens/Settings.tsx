@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { c, type, space, ease } from "../tokens";
 import { PageTitle, Segmented, TextInput, Field, Section } from "../components/ui";
+import { ThemePicker } from "../components/ThemePicker";
 import { getSettings, setSettings, DEFAULT_SETTINGS, type Settings, type TargetMedium } from "../lib/store";
 import type { CleanupLevel } from "../pipeline/types";
 
@@ -16,7 +17,11 @@ export function SettingsScreen() {
 
   return (
     <div>
-      <PageTitle sub="Cleanup, destinations, and connection">Settings</PageTitle>
+      <PageTitle sub="Look, cleanup, destinations, and connection">Settings</PageTitle>
+
+      <Section title="Theme">
+        <ThemePicker />
+      </Section>
 
       <Section title="Cleanup">
         <Field label="How much to edit" hint="Light is conservative: fillers and punctuation only. Raw skips the AI entirely.">

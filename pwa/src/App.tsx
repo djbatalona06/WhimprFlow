@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { c, font, type, ease } from "./tokens";
 import { MicIcon, ClockIcon, ChartIcon, BookIcon, GearIcon } from "./components/icons";
+import { ThemeChrome } from "./components/ThemeChrome";
+import { useTheme } from "./lib/useTheme";
 import { RecordScreen } from "./screens/Record";
 import { HistoryScreen } from "./screens/History";
 import { InsightsScreen } from "./screens/Insights";
@@ -19,6 +21,7 @@ const TABS: { id: Tab; label: string; Icon: React.ComponentType<{ size?: number;
 
 export function App() {
   const [tab, setTab] = useState<Tab>("record");
+  const { theme } = useTheme();
 
   return (
     <div
@@ -29,14 +32,19 @@ export function App() {
         maxWidth: 520,
         margin: "0 auto",
         background: c.bg,
+        position: "relative",
       }}
     >
+      <ThemeChrome chrome={theme.chrome} />
+
       <main
         style={{
           flex: 1,
           overflowY: "auto",
           padding: "max(20px, env(safe-area-inset-top)) 18px 18px",
           WebkitOverflowScrolling: "touch",
+          position: "relative",
+          zIndex: 2,
         }}
       >
         {tab === "record" && <RecordScreen />}
@@ -52,6 +60,8 @@ export function App() {
           borderTop: `1px solid ${c.line}`,
           background: c.bgDeep,
           paddingBottom: "env(safe-area-inset-bottom)",
+          position: "relative",
+          zIndex: 2,
         }}
       >
         {TABS.map(({ id, label, Icon }) => {

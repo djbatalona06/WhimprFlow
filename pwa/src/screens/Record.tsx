@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { c, font, type, space, radius, ease } from "../tokens";
+import type { Theme } from "../themes";
 import { Button } from "../components/ui";
 import { Waveform } from "../components/Waveform";
+import { RecordButton } from "../components/RecordButton";
+import { useTheme } from "../lib/useTheme";
 import { CopyIcon, ShareIcon, NoteIcon, WebhookIcon } from "../components/icons";
 import { startRecording, Recorder } from "../lib/recorder";
 import { transcribe, cleanup, TranscribeError, type RawReason } from "../lib/api";
@@ -18,6 +21,7 @@ import {
 type Phase = "idle" | "recording" | "processing" | "result" | "error";
 
 export function RecordScreen() {
+  const { theme } = useTheme();
   const [phase, setPhase] = useState<Phase>("idle");
   const [bars, setBars] = useState<number[]>([]);
   const [elapsed, setElapsed] = useState(0);
@@ -69,7 +73,7 @@ export function RecordScreen() {
     if (timerRef.current) window.clearInterval(timerRef.current);
     const durationMs = Date.now() - startedRef.current;
     setPhase("processing");
-    setProgress("Transcribing");
+    setProgress(theme.copy.transcribing);
     try {
       const blob = await rec.stop();
       recRef.current = null;
@@ -85,7 +89,7 @@ export function RecordScreen() {
         setPhase("error");
         return;
       }
-      setProgress("Cleaning up");
+      setProgress(theme.copy.cleaning);
       const { cleaned, usedRaw: fellBack, reason } = await cleanup(
         raw,
         settings.cleanup_level,
@@ -145,8 +149,10 @@ export function RecordScreen() {
         </span>
       </header>
 
-      {phase === "idle" && <IdleView onStart={begin} />}
-      {phase === "recording" && <RecordingView bars={bars} time={mmss} onStop={finish} onCancel={cancel} />}
+      {phase === "idle" && <IdleView onStart={begin} theme={theme} />}
+      {phase === "recording" && (
+        <RecordingView bars={bars} time={mmss} onStop={finish} onCancel={cancel} theme={theme} />
+      )}
       {phase === "processing" && <ProcessingView progress={progress} />}
 
       {phase === "error" && failure && (
@@ -241,35 +247,15 @@ export function RecordScreen() {
   );
 }
 
-/** Crafted concentric-ring record control — precise geometry, no blur/glow. */
-function RecordButton({ onClick, size = 128 }: { onClick: () => void; size?: number }) {
-  return (
-    <button
-      onClick={onClick}
-      aria-label="Start recording"
-      style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", lineHeight: 0 }}
-    >
-      <svg width={size} height={size} viewBox="0 0 128 128" aria-hidden="true">
-        <circle cx="64" cy="64" r="62" fill="none" stroke={c.line} strokeWidth="1" />
-        <circle cx="64" cy="64" r="50" fill="none" stroke={c.lineHi} strokeWidth="1" />
-        <circle cx="64" cy="64" r="40" fill={c.accent} />
-        <g stroke={c.onAccent} strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" fill="none">
-          <rect x="57.5" y="47" width="13" height="24" rx="6.5" fill={c.onAccent} stroke="none" />
-          <path d="M52 63a12 12 0 0 0 24 0" />
-          <path d="M64 75v6" />
-        </g>
-      </svg>
-    </button>
-  );
-}
-
-function IdleView({ onStart }: { onStart: () => void }) {
+function IdleView({ onStart, theme }: { onStart: () => void; theme: Theme }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingBottom: 40 }}>
-      <RecordButton onClick={onStart} />
-      <div style={{ marginTop: space.lg, fontSize: type.lg, color: c.text, fontWeight: 600 }}>Tap to dictate</div>
+      <RecordButton onClick={onStart} form={theme.record} />
+      <div style={{ marginTop: space.lg, fontSize: type.lg, color: c.text, fontWeight: 600, fontFamily: font.serif }}>
+        {theme.copy.idleTitle}
+      </div>
       <p style={{ marginTop: space.xs, fontSize: type.sm, color: c.textMute, textAlign: "center", maxWidth: 300, lineHeight: 1.55 }}>
-        Speak naturally. WhimprFlow strips the ums, fixes the punctuation, and hands back clean text.
+        {theme.copy.idleBody}
       </p>
     </div>
   );
@@ -280,11 +266,13 @@ function RecordingView({
   time,
   onStop,
   onCancel,
+  theme,
 }: {
   bars: number[];
   time: string;
   onStop: () => void;
   onCancel: () => void;
+  theme: Theme;
 }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingBottom: 24 }}>
@@ -295,7 +283,7 @@ function RecordingView({
         </span>
       </div>
       <div style={{ width: "100%", maxWidth: 320, marginBottom: space.xl }}>
-        <Waveform bars={bars} active />
+        <Waveform bars={bars} active form={theme.wave} />
       </div>
       <button
         onClick={onStop}
