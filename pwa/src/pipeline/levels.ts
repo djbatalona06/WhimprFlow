@@ -6,7 +6,7 @@
 // found the more-aggressive default was the top "it changed what I said"
 // complaint, so we bias conservative.
 
-import type { CleanupLevel } from "./types";
+import type { CleanupLevel } from "./types.js";
 
 /** True when no model should be invoked and the raw transcript is used verbatim. */
 export function bypassesLlm(level: CleanupLevel): boolean {

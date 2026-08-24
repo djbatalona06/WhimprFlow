@@ -6,8 +6,6 @@
 // The client sends the raw audio as the request body with metadata in headers,
 // so this function never has to parse inbound multipart.
 
-export const config = { api: { bodyParser: false } };
-
 const DEFAULT_BASE = "https://api.groq.com/openai/v1";
 
 function extFor(contentType: string): string {
@@ -18,7 +16,17 @@ function extFor(contentType: string): string {
   return "webm";
 }
 
+/**
+ * Read the request body as bytes. The host may hand the body over already
+ * buffered (`req.body`) or leave it as a readable stream; support both rather
+ * than assuming, since getting this wrong yields an empty upload with no clue.
+ */
 async function readBody(req: any): Promise<Buffer> {
+  const pre = req.body;
+  if (Buffer.isBuffer(pre)) return pre;
+  if (typeof pre === "string") return Buffer.from(pre);
+  if (pre instanceof Uint8Array) return Buffer.from(pre);
+
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
@@ -37,6 +45,7 @@ export default async function handler(req: any, res: any) {
   const apiKey = serverKey || clientKey;
   if (!apiKey) {
     res.status(400).json({
+      stage: "config",
       error:
         "No API key configured. Set SPEECH_API_KEY (or WHIMPR_API_KEY) on the server, or add a key in the app's Settings.",
     });
@@ -55,7 +64,7 @@ export default async function handler(req: any, res: any) {
   try {
     const audio = await readBody(req);
     if (audio.length === 0) {
-      res.status(400).json({ error: "Empty audio." });
+      res.status(400).json({ stage: "audio", error: "The recording arrived empty. Try again." });
       return;
     }
 
@@ -72,13 +81,23 @@ export default async function handler(req: any, res: any) {
     });
 
     if (!upstream.ok) {
-      const detail = await upstream.text();
-      res.status(upstream.status).json({ error: `Transcription failed: ${detail.slice(0, 400)}` });
+      const detail = await upstream.text().catch(() => "");
+      console.error(`transcribe: upstream ${upstream.status} — ${detail.slice(0, 300)}`);
+      res.status(upstream.status).json({
+        stage: "speech-provider",
+        upstreamStatus: upstream.status,
+        model,
+        error: `The speech service returned ${upstream.status}. ${detail.slice(0, 300)}`,
+      });
       return;
     }
     const data = (await upstream.json()) as { text?: string };
     res.status(200).json({ text: (data.text || "").trim() });
   } catch (e) {
-    res.status(500).json({ error: e instanceof Error ? e.message : "Transcription error" });
+    console.error("transcribe: failed —", e);
+    res.status(500).json({
+      stage: "transcribe",
+      error: e instanceof Error ? e.message : "Transcription error",
+    });
   }
 }

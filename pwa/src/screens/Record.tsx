@@ -4,7 +4,7 @@ import { Button } from "../components/ui";
 import { Waveform } from "../components/Waveform";
 import { CopyIcon, ShareIcon, NoteIcon, WebhookIcon } from "../components/icons";
 import { startRecording, Recorder } from "../lib/recorder";
-import { transcribe, cleanup } from "../lib/api";
+import { transcribe, cleanup, TranscribeError, type RawReason } from "../lib/api";
 import { getSettings, addHistory, vocab } from "../lib/store";
 import { countWords, type SessionRecord } from "../lib/stats";
 import {
@@ -23,11 +23,14 @@ export function RecordScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [text, setText] = useState("");
   const [usedRaw, setUsedRaw] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [rawReason, setRawReason] = useState<RawReason | undefined>(undefined);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const [toast, setToast] = useState("");
   const [progress, setProgress] = useState("");
 
   const recRef = useRef<Recorder | null>(null);
+  const blobMime = useRef("");
+  const blobBytes = useRef(0);
   const startedRef = useRef(0);
   const timerRef = useRef<number | null>(null);
 
@@ -44,7 +47,7 @@ export function RecordScreen() {
   }
 
   async function begin() {
-    setErrorMsg("");
+    setFailure(null);
     try {
       const rec = await startRecording((b) => setBars(b));
       recRef.current = rec;
@@ -54,8 +57,8 @@ export function RecordScreen() {
       timerRef.current = window.setInterval(() => {
         setElapsed(Math.floor((Date.now() - startedRef.current) / 1000));
       }, 250);
-    } catch {
-      setErrorMsg("Microphone access was blocked. Allow the mic and try again.");
+    } catch (e) {
+      setFailure(micFailure(e));
       setPhase("error");
     }
   }
@@ -70,15 +73,20 @@ export function RecordScreen() {
     try {
       const blob = await rec.stop();
       recRef.current = null;
+      blobMime.current = blob.type;
+      blobBytes.current = blob.size;
       const settings = getSettings();
       const { text: raw } = await transcribe(blob, settings);
       if (!raw.trim()) {
-        setErrorMsg("Didn't catch any speech. Try again a bit closer to the mic.");
+        setFailure({
+          title: "Nothing to transcribe",
+          message: "The recording came through silent. Move a little closer to the mic and try again.",
+        });
         setPhase("error");
         return;
       }
       setProgress("Cleaning up");
-      const { cleaned, usedRaw: fellBack } = await cleanup(
+      const { cleaned, usedRaw: fellBack, reason } = await cleanup(
         raw,
         settings.cleanup_level,
         vocab(),
@@ -86,6 +94,7 @@ export function RecordScreen() {
       );
       setText(cleaned);
       setUsedRaw(fellBack);
+      setRawReason(reason);
 
       const record: SessionRecord = {
         ts_unix: Math.floor(Date.now() / 1000),
@@ -98,7 +107,7 @@ export function RecordScreen() {
       addHistory(record);
       setPhase("result");
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Something went wrong.");
+      setFailure(transcribeFailure(e, { mime: blobMime.current, bytes: blobBytes.current }));
       setPhase("error");
     }
   }
@@ -113,6 +122,8 @@ export function RecordScreen() {
   function reset() {
     setText("");
     setUsedRaw(false);
+    setRawReason(undefined);
+    setFailure(null);
     setPhase("idle");
   }
 
@@ -138,23 +149,31 @@ export function RecordScreen() {
       {phase === "recording" && <RecordingView bars={bars} time={mmss} onStop={finish} onCancel={cancel} />}
       {phase === "processing" && <ProcessingView progress={progress} />}
 
-      {phase === "error" && (
+      {phase === "error" && failure && (
         <div style={{ marginTop: space.xl, textAlign: "center", padding: `0 ${space.md}px` }}>
           <div style={{ fontSize: type.lg, fontWeight: 600, color: c.error, marginBottom: space.sm }}>
-            Couldn't finish
+            {failure.title}
           </div>
           <div style={{ color: c.textDim, fontSize: type.body, marginBottom: space.lg, lineHeight: 1.5 }}>
-            {errorMsg}
+            {failure.message}
           </div>
           <Button onClick={reset}>Try again</Button>
+          {failure.diagnostics && (
+            <button
+              onClick={() => runExport(() => copyToClipboard(failure.diagnostics!))}
+              style={{ marginTop: space.md, background: "transparent", border: "none", color: c.textMute, fontSize: type.sm, fontWeight: 600, cursor: "pointer" }}
+            >
+              Copy diagnostics
+            </button>
+          )}
         </div>
       )}
 
       {phase === "result" && (
         <div style={{ marginTop: space.sm }}>
-          {usedRaw && (
-            <div style={{ fontSize: type.sm, color: c.warm, marginBottom: space.sm }}>
-              Cleanup was held back by the safety gate, so this is the raw transcript.
+          {usedRaw && rawReason !== "level-none" && (
+            <div style={{ fontSize: type.sm, color: c.warm, marginBottom: space.sm, lineHeight: 1.5 }}>
+              {rawReasonCopy(rawReason)}
             </div>
           )}
           <textarea
@@ -342,4 +361,97 @@ function ExportButton({ icon, label, onClick }: { icon: React.ReactNode; label: 
       {label}
     </button>
   );
+}
+
+/** A failure the user can act on: what happened, and what to do about it. */
+interface Failure {
+  title: string;
+  message: string;
+  /** Optional technical detail, copyable for a bug report. */
+  diagnostics?: string;
+}
+
+/** Why the raw transcript came back, in the user's terms. */
+function rawReasonCopy(reason: RawReason | undefined): string {
+  switch (reason) {
+    case "gate":
+      return "The safety gate found the edit drifted too far from what you said, so this is your raw transcript.";
+    case "unreachable":
+      return "Cleanup couldn't be reached, so this is your raw transcript — nothing was lost.";
+    case "no-key":
+      return "No cleanup key is configured, so this is your raw transcript. Settings → Check connection has the details.";
+    default:
+      return "Cleanup didn't return a usable result, so this is your raw transcript.";
+  }
+}
+
+function micFailure(e: unknown): Failure {
+  const name = e instanceof DOMException ? e.name : "";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return {
+      title: "Microphone blocked",
+      message:
+        "Your browser is denying mic access. Open the site settings (the lock or ⓘ icon in the address bar), allow the microphone, then try again.",
+    };
+  }
+  if (name === "NotFoundError" || name === "OverconstrainedError") {
+    return {
+      title: "No microphone found",
+      message: "This device didn't offer a microphone. Check that one is connected and not in use by another app.",
+    };
+  }
+  if (name === "NotReadableError") {
+    return {
+      title: "Microphone busy",
+      message: "Another app is holding the mic. Close it and try again.",
+    };
+  }
+  return {
+    title: "Couldn't start recording",
+    message: "The microphone didn't start. Try again, or reload the app if it keeps happening.",
+  };
+}
+
+function transcribeFailure(e: unknown, audio: { mime: string; bytes: number }): Failure {
+  const meta = [
+    `when: ${new Date().toISOString()}`,
+    `audio: ${audio.mime || "unknown"} · ${(audio.bytes / 1024).toFixed(0)} KB`,
+  ];
+
+  if (e instanceof TranscribeError) {
+    meta.unshift(`stage: ${e.stage}`, `status: ${e.status}`, `detail: ${e.message}`);
+    const diagnostics = meta.join("\n");
+
+    if (e.stage === "offline") {
+      return { title: "No connection", message: e.message, diagnostics };
+    }
+    if (e.stage === "config") {
+      return {
+        title: "Backend not configured",
+        message: "No speech key is set. Add one under Settings → Advanced, or set WHIMPR_API_KEY on the server.",
+        diagnostics,
+      };
+    }
+    if (e.stage === "speech-provider") {
+      return {
+        title: "The speech service refused it",
+        message: `${e.message} Your recording is still here — try again in a moment.`,
+        diagnostics,
+      };
+    }
+    if (e.status === 413) {
+      return {
+        title: "Recording too long",
+        message: "That clip was too large to upload. Try a shorter take.",
+        diagnostics,
+      };
+    }
+    return { title: "Transcription failed", message: e.message, diagnostics };
+  }
+
+  return {
+    title: "Something went wrong",
+    message: e instanceof Error ? e.message : "The dictation didn't finish. Try again.",
+    diagnostics: meta.join("\n"),
+  };
 }

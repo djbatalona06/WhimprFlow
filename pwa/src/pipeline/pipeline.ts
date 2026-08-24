@@ -1,8 +1,8 @@
 // The cleanup pipeline assembly + deterministic pre/post text passes.
 // Ported 1:1 from `crates/whimpr-core/src/cleanup/mod.rs`.
 
-import type { CleanupContext, CleanupMsg } from "./types";
-import { FEW_SHOT, systemFor } from "./prompts";
+import type { CleanupContext, CleanupMsg } from "./types.js";
+import { FEW_SHOT, systemFor } from "./prompts.js";
 
 /** Placeholder tokens for user-requested line breaks (see pre/post passes). */
 const NL_SENTINEL = "[[NL]]";
